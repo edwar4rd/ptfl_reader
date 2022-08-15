@@ -75,7 +75,12 @@ impl PtflParser {
                     } else {
                         let reg_length: usize = match line.parse() {
                             Ok(length) => length,
-                            Err(err) => return Err(format!("Expected u32 or empty when None, {}", err.to_string())),
+                            Err(err) => {
+                                return Err(format!(
+                                    "Expected u32 or empty when None, {}",
+                                    err.to_string()
+                                ))
+                            }
                         };
                         current_reg.clear();
                         current_reg.reserve(reg_length);
@@ -117,8 +122,13 @@ impl PtflParser {
                     if next == 0 {
                         target.push((
                             format!(
-                                "{}-{file_entry_num}",
-                                Path::new(&path).file_name().expect("Given path isn't a file").to_str().expect("Invalid unicode in filename")
+                                "{}-{:04}",
+                                Path::new(&path)
+                                    .file_name()
+                                    .expect("Given path isn't a file")
+                                    .to_str()
+                                    .expect("Invalid unicode in filename"),
+                                file_entry_num
                             ),
                             current_reg.clone(),
                         ));
