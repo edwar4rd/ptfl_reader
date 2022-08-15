@@ -1,6 +1,6 @@
+use ptfl_reader::Config;
+use ptfl_reader::PtflParser;
 use std::env;
-use std::fs;
-use std::path::Path;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -19,101 +19,19 @@ fn main() {
     }
 
     let mut point_files: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
+    let mut parser = PtflParser::new();
     for path in config.filenames {
-        let file = match fs::read_to_string(&path) {
-            Ok(file) => file,
-            Err(_) => {
+        match parser.parse(path.as_str(), &mut point_files) {
+            Ok(count) => {
+                println!("Read {count} from {}.", path.as_str());
+                println!("Currently {} regs!", point_files.len())
+            }
+            Err(err) => {
                 println!("Error happened parsing file {path}: ");
-                println!("\tFailed reading file");
-                return;
-            }
-        };
-
-        enum ParsingState {
-            None,
-            DuringReg(usize),
-        }
-
-        let mut file_entry: u32 = 0;
-        let mut my_state = ParsingState::None;
-        let mut current_reg: Vec<(f64, f64)> = Vec::new();
-        for line in file.lines() {
-            my_state = match my_state {
-                ParsingState::None => {
-                    if line.is_empty() {
-                        ParsingState::None
-                    } else {
-                        let reg_length: usize = match line.parse() {
-                            Ok(length) => length,
-                            Err(_) => {
-                                println!("Error happened parsing file {path}: ");
-                                println!("\tExpected u32 or empty when None");
-                                return;
-                            }
-                        };
-                        current_reg.clear();
-                        current_reg.reserve(reg_length);
-                        ParsingState::DuringReg(reg_length)
-                    }
-                }
-                ParsingState::DuringReg(remaining) => {
-                    let next: usize = remaining - 1;
-                    let reg: Vec<&str> = line.split(',').collect();
-                    let reg: (f64, f64) = (
-                        reg[0].trim().parse().expect(""),
-                        reg[1].trim().parse().expect(""),
-                    );
-                    current_reg.push(reg);
-                    if next == 0 {
-                        point_files.push((
-                            format!(
-                                "{}-{file_entry}",
-                                Path::new(&path).file_name().expect("").to_str().expect("")
-                            ),
-                            current_reg.clone(),
-                        ));
-                        file_entry+=1;
-                        println!("{}", point_files.last().expect("").0);
-                        ParsingState::None
-                    } else {
-                        ParsingState::DuringReg(remaining - 1)
-                    }
-                }
+                println!("\t{err}");
+                parser.renew();
             }
         }
-        println!("Currently {} regs!", point_files.len());
-    }
-    println!("");
-}
-
-struct Config {
-    filenames: Vec<String>,
-    help: bool,
-}
-
-impl Config {
-    fn new(args: &[String]) -> Result<Config, String> {
-        let mut filenames: Vec<String> = Vec::new();
-        for i in &args[1..] {
-            if !i.starts_with("--") {
-                if !Path::new(i).exists() {
-                    return Result::Err(format!("Given filepath {} do not exist", i));
-                }
-                filenames.push(i.to_string());
-            } else {
-                if i == "--help" {
-                    return Result::Ok(Config {
-                        filenames,
-                        help: true,
-                    });
-                }
-            }
-        }
-
-        Result::Ok(Config {
-            filenames,
-            help: false,
-        })
     }
 }
 
