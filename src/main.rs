@@ -34,7 +34,7 @@ fn main() {
             DuringReg(usize),
         }
 
-        let file_entry: u32 = 0;
+        let mut file_entry: u32 = 0;
         let mut my_state = ParsingState::None;
         let mut current_reg: Vec<(f64, f64)> = Vec::new();
         for line in file.lines() {
@@ -65,7 +65,15 @@ fn main() {
                     );
                     current_reg.push(reg);
                     if next == 0 {
-                        point_files.push((format!("{path}-{file_entry}"), current_reg.clone()));
+                        point_files.push((
+                            format!(
+                                "{}-{file_entry}",
+                                Path::new(&path).file_name().expect("").to_str().expect("")
+                            ),
+                            current_reg.clone(),
+                        ));
+                        file_entry+=1;
+                        println!("{}", point_files.last().expect("").0);
                         ParsingState::None
                     } else {
                         ParsingState::DuringReg(remaining - 1)
