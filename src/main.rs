@@ -59,7 +59,10 @@ fn main() {
                 ParsingState::DuringReg(remaining) => {
                     let next: usize = remaining - 1;
                     let reg: Vec<&str> = line.split(',').collect();
-                    let reg: (f64, f64) = (reg[0].trim().parse().expect(""), reg[1].trim().parse().expect(""));
+                    let reg: (f64, f64) = (
+                        reg[0].trim().parse().expect(""),
+                        reg[1].trim().parse().expect(""),
+                    );
                     current_reg.push(reg);
                     if next == 0 {
                         point_files.push((format!("{path}-{file_entry}"), current_reg.clone()));
@@ -73,12 +76,11 @@ fn main() {
         println!("Currently {} regs!", point_files.len());
     }
     println!("");
-
 }
 
 struct Config {
     filenames: Vec<String>,
-    help: bool
+    help: bool,
 }
 
 impl Config {
@@ -87,19 +89,23 @@ impl Config {
         for i in &args[1..] {
             if !i.starts_with("--") {
                 if !Path::new(i).exists() {
-                    return Result::Err(format!("Given filepath {} do not exist", i))
+                    return Result::Err(format!("Given filepath {} do not exist", i));
                 }
                 filenames.push(i.to_string());
-            }
-
-            else {
-                if i=="--help" {
-                    return Result::Ok(Config { filenames, help: true })
+            } else {
+                if i == "--help" {
+                    return Result::Ok(Config {
+                        filenames,
+                        help: true,
+                    });
                 }
             }
         }
 
-        Result::Ok(Config { filenames, help: false })
+        Result::Ok(Config {
+            filenames,
+            help: false,
+        })
     }
 }
 
