@@ -1,3 +1,5 @@
+extern crate image;
+
 use ptfl_reader::Config;
 use ptfl_reader::PtflParser;
 use std::env;
@@ -32,6 +34,35 @@ fn main() {
                 parser.renew();
             }
         }
+    }
+
+    // print lidar points onto the image
+    for i in point_files {
+        let imgx = 800;
+        let imgy = 800;
+
+        // Create a new ImgBuf with width: imgx and height: imgy
+        let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
+        for j in i.1 {
+            if j.0 > 4.0_f64.sqrt() {
+                continue;
+            }
+            let x = j.1 / 4.0 * ((j.0).cos());
+            let y = j.1 / 4.0 * ((j.0).sin());
+            let x = if (x * 800.0 + 400.0) < (imgx as f64) {
+                (x * 800.0 + 400.0) as u32
+            } else {
+                continue
+            };
+            let y = if (y * 800.0 + 400.0) < (imgy as f64) {
+                (y * 800.0 + 400.0) as u32
+            } else {
+                continue;
+            };
+            let pixel = imgbuf.get_pixel_mut(x, y);
+            *pixel = image::Rgb([5 as u8, 255 as u8, 255 as u8]);
+        }
+        imgbuf.save(format!("./tests/{}.png", i.0)).unwrap();
     }
 }
 

@@ -109,7 +109,7 @@ impl PtflParser {
                             }
                         },
                         match reg[1].trim().parse() {
-                            Ok(angle) => angle,
+                            Ok(range) => range,
                             Err(err) => {
                                 return Err(format!(
                                     "Expected float when DuringReg, {}",
