@@ -1,10 +1,16 @@
-extern crate image;
-
 use ptfl_reader::Config;
 use ptfl_reader::PtflParser;
 use std::env;
+use tiny_skia::Paint;
+use tiny_skia::PathBuilder;
+use tiny_skia::Pixmap;
+use tiny_skia::Rect;
+use tiny_skia::Stroke;
+use tiny_skia::Transform;
 
 fn main() {
+    let scale = 1000.0;
+    let clip_pos = 2.0;
     let args: Vec<String> = env::args().collect();
     let config = match Config::new(&args) {
         Ok(config) => config,
@@ -38,31 +44,118 @@ fn main() {
 
     // print lidar points onto the image
     for i in point_files {
-        let imgx = 800;
-        let imgy = 800;
+        let mut all_path_builder = PathBuilder::new();
+        let mut non_zero_path_builder = PathBuilder::new();
+        let mut points_path_builder = PathBuilder::new();
 
-        // Create a new ImgBuf with width: imgx and height: imgy
-        let mut imgbuf = image::ImageBuffer::new(imgx, imgy);
-        for j in i.1 {
-            if j.0 > 4.0_f64.sqrt() {
-                continue;
+        all_path_builder.move_to(
+            ((&i.1)[0].1 * (&i.1)[0].0.cos() + clip_pos) as f32,
+            ((&i.1)[0].1 * (&i.1)[0].0.sin() + clip_pos) as f32,
+        );
+        let mut entry_iter = i.1.iter();
+        if loop {
+            let j = match entry_iter.next() {
+                Some(some) => some,
+                // iteration is finished
+                None => break false,
+            };
+
+            let x: f32 = (j.1 * j.0.cos() + clip_pos) as f32;
+            let y: f32 = (j.1 * j.0.sin() + clip_pos) as f32;
+
+            // its possible to both move_to(x, y) and line_to(x, y),
+            // but that's not a issue
+            all_path_builder.line_to(x, y);
+            if j.1 != 0.0 {
+                // this might never be executed if all point is (angle, 0)
+                // this is handled later by matching .finish()
+                non_zero_path_builder.move_to(x, y);
+                points_path_builder.move_to(x + 0.005, y + 0.005);
+                points_path_builder.line_to(x - 0.005, y + 0.005);
+                points_path_builder.line_to(x - 0.005, y - 0.005);
+                points_path_builder.line_to(x + 0.005, y - 0.005);
+                points_path_builder.line_to(x + 0.005, y + 0.005);
+                points_path_builder.close();
+                break true;
             }
-            let x = j.1 / 4.0 * ((j.0).cos());
-            let y = j.1 / 4.0 * ((j.0).sin());
-            let x = if (x * 800.0 + 400.0) < (imgx as f64) {
-                (x * 800.0 + 400.0) as u32
-            } else {
-                continue
-            };
-            let y = if (y * 800.0 + 400.0) < (imgy as f64) {
-                (y * 800.0 + 400.0) as u32
-            } else {
-                continue;
-            };
-            let pixel = imgbuf.get_pixel_mut(x, y);
-            *pixel = image::Rgb([5 as u8, 255 as u8, 255 as u8]);
+        } {
+            loop {
+                let j = match entry_iter.next() {
+                    Some(some) => some,
+                    None => break,
+                };
+
+                let x: f32 = (j.1 * j.0.cos() + clip_pos) as f32;
+                let y: f32 = (j.1 * j.0.sin() + clip_pos) as f32;
+                all_path_builder.line_to(x, y);
+                if j.1 != 0.0 {
+                    non_zero_path_builder.line_to(x, y);
+                    points_path_builder.move_to(x + 0.005, y + 0.005);
+                    points_path_builder.line_to(x - 0.005, y + 0.005);
+                    points_path_builder.line_to(x - 0.005, y - 0.005);
+                    points_path_builder.line_to(x + 0.005, y - 0.005);
+                    points_path_builder.line_to(x + 0.005, y + 0.005);
+                    points_path_builder.close();
+                }
+            }
         }
-        imgbuf.save(format!("./tests/{}.png", i.0)).unwrap();
+
+        let mut pixmap = Pixmap::new(
+            (2.0 * clip_pos * scale) as u32,
+            (2.0 * clip_pos * scale) as u32,
+        )
+        .unwrap();
+        let mut paint = Paint::default();
+        paint.anti_alias = true;
+
+        paint.set_color_rgba8(0, 0, 0, 255);
+        pixmap
+            .fill_rect(
+                Rect::from_xywh(0.0, 0.0, 2.0 * clip_pos as f32, 2.0 * clip_pos as f32).unwrap(),
+                &paint,
+                Transform::from_scale(scale as f32, scale as f32),
+                None,
+            )
+            .unwrap();
+
+        paint.set_color_rgba8(179, 77, 77, 77);
+        let mut stroke = Stroke::default();
+        stroke.width = 0.0005 as f32; // hairline
+        pixmap.stroke_path(
+            &all_path_builder.finish().unwrap(),
+            &paint,
+            &stroke,
+            Transform::from_scale(scale as f32, scale as f32),
+            None,
+        );
+
+        paint.set_color_rgba8(217, 38, 38, 154);
+        let mut stroke = Stroke::default();
+        stroke.width = 0.003 as f32;
+        if let Some(non_zero_path) = non_zero_path_builder.finish() {
+            pixmap.stroke_path(
+                &non_zero_path,
+                &paint,
+                &stroke,
+                Transform::from_scale(scale as f32, scale as f32),
+                None,
+            );
+        }
+
+        paint.set_color_rgba8(255, 0, 0, 205);
+        let mut stroke = Stroke::default();
+        stroke.width = 0.002 as f32;
+        if let Some(points_path) = points_path_builder.finish() {
+            pixmap.stroke_path(
+                &points_path,
+                &paint,
+                &stroke,
+                Transform::from_scale(scale as f32, scale as f32),
+                None,
+            );
+        }
+
+        pixmap.save_png(format!("./tests/{}.png", i.0)).unwrap();
     }
 }
 
