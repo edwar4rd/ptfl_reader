@@ -1,13 +1,7 @@
-use coolor::*;
 use ptfl_reader::Config;
+use ptfl_reader::PNGOutput;
 use ptfl_reader::PtflParser;
 use std::env;
-use tiny_skia::Paint;
-use tiny_skia::PathBuilder;
-use tiny_skia::Pixmap;
-use tiny_skia::Rect;
-use tiny_skia::Stroke;
-use tiny_skia::Transform;
 
 fn main() {
     let scale = 1000.0;
@@ -44,125 +38,26 @@ fn main() {
     }
 
     // print lidar points onto the image
+    let mut all_output = PNGOutput::new();
+    let mut this_hue = 0.0;
     for i in point_files {
-        let mut all_path_builder = PathBuilder::new();
-        let mut non_zero_path_builder = PathBuilder::new();
-        let mut points_path_builder = PathBuilder::new();
-
-        all_path_builder.move_to(
-            (scale * ((&i.1)[0].1 * (&i.1)[0].0.cos() + clip_pos)) as f32,
-            (scale * ((&i.1)[0].1 * (&i.1)[0].0.sin() + clip_pos)) as f32,
-        );
-        let mut entry_iter = i.1.iter();
-        if loop {
-            let j = match entry_iter.next() {
-                Some(some) => some,
-                // iteration is finished
-                None => break false,
-            };
-
-            let x = scale * (j.1 * j.0.cos() + clip_pos);
-            let y = scale * (j.1 * j.0.sin() + clip_pos);
-
-            // its possible to both move_to(x, y) and line_to(x, y),
-            // but that's not a issue
-            all_path_builder.line_to(x as f32, y as f32);
-            if j.1 != 0.0 {
-                // this might never be executed if all point is (angle, 0)
-                // this is handled later by matching .finish()
-                non_zero_path_builder.move_to(x as f32, y as f32);
-                points_path_builder.move_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
-                points_path_builder.line_to((x - scale * 0.005) as f32, (y + scale * 0.005) as f32);
-                points_path_builder.line_to((x - scale * 0.005) as f32, (y - scale * 0.005) as f32);
-                points_path_builder.line_to((x + scale * 0.005) as f32, (y - scale * 0.005) as f32);
-                points_path_builder.line_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
-                points_path_builder.close();
-                break true;
-            }
-        } {
-            loop {
-                let j = match entry_iter.next() {
-                    Some(some) => some,
-                    None => break,
-                };
-
-                let x = scale * (j.1 * j.0.cos() + clip_pos);
-                let y = scale * (j.1 * j.0.sin() + clip_pos);
-                all_path_builder.line_to(x as f32, y as f32);
-                if j.1 != 0.0 {
-                    non_zero_path_builder.line_to(x as f32, y as f32);
-                    points_path_builder
-                        .move_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
-                    points_path_builder
-                        .line_to((x - scale * 0.005) as f32, (y + scale * 0.005) as f32);
-                    points_path_builder
-                        .line_to((x - scale * 0.005) as f32, (y - scale * 0.005) as f32);
-                    points_path_builder
-                        .line_to((x + scale * 0.005) as f32, (y - scale * 0.005) as f32);
-                    points_path_builder
-                        .line_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
-                    points_path_builder.close();
-                }
-            }
-        }
-
-        all_path_builder.close();
-        non_zero_path_builder.close();
-
-        let mut pixmap = Pixmap::new(
-            (2.0 * clip_pos * scale) as u32,
-            (2.0 * clip_pos * scale) as u32,
-        )
-        .unwrap();
-        let mut paint = Paint::default();
-        paint.anti_alias = true;
-
-        paint.set_color_rgba8(0, 0, 0, 255);
-        pixmap
-            .fill_rect(
-                Rect::from_xywh(
-                    0.0,
-                    0.0,
-                    (scale * 2.0 * clip_pos) as f32,
-                    (scale * 2.0 * clip_pos) as f32,
-                )
-                .unwrap(),
-                &paint,
-                Transform::identity(),
-                None,
-            )
+        let mut output = PNGOutput::new();
+        output.add_points(&i.1, clip_pos, scale, this_hue, 50);
+        output
+            .to_pixmap(clip_pos, scale)
+            .save_png(format!("./tests/{}.png", i.0))
             .unwrap();
-
-        let rgba = Hsl::new(0.0, 0.4, 0.5).to_rgb();
-        paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (0.3 * 255.0) as u8);
-        let mut stroke = Stroke::default();
-        stroke.width = (0.0005 * scale) as f32; // hairline
-        pixmap.stroke_path(
-            &all_path_builder.finish().unwrap(),
-            &paint,
-            &stroke,
-            Transform::identity(),
-            None,
-        );
-
-        let rgba = Hsl::new(0.0, 0.7, 0.5).to_rgb();
-        paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (0.6 * 255.0) as u8);
-        let mut stroke = Stroke::default();
-        stroke.width = (0.003 * scale) as f32;
-        if let Some(non_zero_path) = non_zero_path_builder.finish() {
-            pixmap.stroke_path(&non_zero_path, &paint, &stroke, Transform::identity(), None);
-        }
-
-        let rgba = Hsl::new(0.0, 1.0, 0.5).to_rgb();
-        paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (0.8 * 255.0) as u8);
-        let mut stroke = Stroke::default();
-        stroke.width = (0.002 * scale) as f32;
-        if let Some(points_path) = points_path_builder.finish() {
-            pixmap.stroke_path(&points_path, &paint, &stroke, Transform::identity(), None);
-        }
-
-        pixmap.save_png(format!("./tests/{}.png", i.0)).unwrap();
+        all_output = PNGOutput::combine(all_output, output);
+        this_hue = if this_hue + 7.0 > 360.0 {
+            this_hue - 353.0
+        } else {
+            this_hue + 7.0
+        };
     }
+    all_output
+        .to_pixmap(clip_pos, scale)
+        .save_png(format!("./tests/all.png"))
+        .unwrap();
 }
 
 fn print_help() {

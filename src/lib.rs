@@ -1,5 +1,12 @@
+use coolor::*;
 use std::fs;
 use std::path::Path;
+use tiny_skia::Paint;
+use tiny_skia::PathBuilder;
+use tiny_skia::Pixmap;
+use tiny_skia::Rect;
+use tiny_skia::Stroke;
+use tiny_skia::Transform;
 
 pub struct Config {
     pub filenames: Vec<String>,
@@ -141,5 +148,170 @@ impl PtflParser {
             }
         }
         Ok(file_entry_num)
+    }
+}
+
+pub struct PNGOutput {
+    all_paths: Vec<(tiny_skia::Path, f64, u32)>,
+    non_zero_paths: Vec<(tiny_skia::Path, f64, u32)>,
+    points_paths: Vec<(tiny_skia::Path, f64, u32)>,
+}
+
+impl PNGOutput {
+    pub fn new() -> PNGOutput {
+        PNGOutput {
+            all_paths: Vec::new(),
+            non_zero_paths: Vec::new(),
+            points_paths: Vec::new(),
+        }
+    }
+
+    pub fn add_points(
+        &mut self,
+        points: &Vec<(f64, f64)>,
+        clip_pos: f64,
+        scale: f64,
+        hue: f64,
+        brightness: u32,
+    ) {
+        let mut all_path_builder = PathBuilder::new();
+        let mut non_zero_path_builder = PathBuilder::new();
+        let mut points_path_builder = PathBuilder::new();
+
+        all_path_builder.move_to(
+            (scale * ((&points)[0].1 * (&points)[0].0.cos() + clip_pos)) as f32,
+            (scale * ((&points)[0].1 * (&points)[0].0.sin() + clip_pos)) as f32,
+        );
+        let mut entry_iter = points.iter();
+        if loop {
+            let j = match entry_iter.next() {
+                Some(some) => some,
+                // iteration is finished
+                None => break false,
+            };
+
+            let x = scale * (j.1 * j.0.cos() + clip_pos);
+            let y = scale * (j.1 * j.0.sin() + clip_pos);
+
+            // its possible to both move_to(x, y) and line_to(x, y),
+            // but that's not a issue
+            all_path_builder.line_to(x as f32, y as f32);
+            if j.1 != 0.0 {
+                // this might never be executed if all point is (angle, 0)
+                // this is handled later by matching .finish()
+                non_zero_path_builder.move_to(x as f32, y as f32);
+                points_path_builder.move_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
+                points_path_builder.line_to((x - scale * 0.005) as f32, (y + scale * 0.005) as f32);
+                points_path_builder.line_to((x - scale * 0.005) as f32, (y - scale * 0.005) as f32);
+                points_path_builder.line_to((x + scale * 0.005) as f32, (y - scale * 0.005) as f32);
+                points_path_builder.line_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
+                points_path_builder.close();
+                break true;
+            }
+        } {
+            loop {
+                let j = match entry_iter.next() {
+                    Some(some) => some,
+                    None => break,
+                };
+
+                let x = scale * (j.1 * j.0.cos() + clip_pos);
+                let y = scale * (j.1 * j.0.sin() + clip_pos);
+                all_path_builder.line_to(x as f32, y as f32);
+                if j.1 != 0.0 {
+                    non_zero_path_builder.line_to(x as f32, y as f32);
+                    points_path_builder
+                        .move_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
+                    points_path_builder
+                        .line_to((x - scale * 0.005) as f32, (y + scale * 0.005) as f32);
+                    points_path_builder
+                        .line_to((x - scale * 0.005) as f32, (y - scale * 0.005) as f32);
+                    points_path_builder
+                        .line_to((x + scale * 0.005) as f32, (y - scale * 0.005) as f32);
+                    points_path_builder
+                        .line_to((x + scale * 0.005) as f32, (y + scale * 0.005) as f32);
+                    points_path_builder.close();
+                }
+            }
+
+            all_path_builder.close();
+            non_zero_path_builder.close();
+
+            if let Some(all_path) = all_path_builder.finish() {
+                self.all_paths.push((all_path, hue, brightness));
+            }
+
+            if let Some(non_zero_path) = non_zero_path_builder.finish() {
+                self.non_zero_paths.push((non_zero_path, hue, brightness));
+            }
+
+            if let Some(points_path) = points_path_builder.finish() {
+                self.points_paths.push((points_path, hue, brightness));
+            }
+        }
+    }
+
+    pub fn combine(mut a: PNGOutput, mut b: PNGOutput) -> PNGOutput {
+        a.all_paths.append(&mut b.all_paths);
+        a.non_zero_paths.append(&mut b.non_zero_paths);
+        a.points_paths.append(&mut b.points_paths);
+        PNGOutput {
+            all_paths: a.all_paths,
+            non_zero_paths: a.non_zero_paths,
+            points_paths: a.points_paths,
+        }
+    }
+
+    pub fn to_pixmap(&self, clip_pos: f64, scale: f64) -> Pixmap {
+        let mut pixmap = Pixmap::new(
+            (2.0 * clip_pos * scale) as u32,
+            (2.0 * clip_pos * scale) as u32,
+        )
+        .unwrap();
+
+        let mut paint = Paint::default();
+        paint.anti_alias = true;
+
+        paint.set_color_rgba8(0, 0, 0, 255);
+        pixmap
+            .fill_rect(
+                Rect::from_xywh(
+                    0.0,
+                    0.0,
+                    (scale * 2.0 * clip_pos) as f32,
+                    (scale * 2.0 * clip_pos) as f32,
+                )
+                .unwrap(),
+                &paint,
+                Transform::identity(),
+                None,
+            )
+            .unwrap();
+
+        let mut stroke = Stroke::default();
+        stroke.width = (0.0005 * scale) as f32;
+        for i in &self.all_paths {
+            let rgba = Hsl::new(i.1 as f32, 0.4, (i.2 as f64 / 100.0) as f32).to_rgb();
+            paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (0.3 * 255.0) as u8);
+            pixmap.stroke_path(&i.0, &paint, &stroke, Transform::identity(), None);
+        }
+
+        let mut stroke = Stroke::default();
+        stroke.width = (0.003 * scale) as f32;
+        for i in &self.non_zero_paths {
+            let rgba = Hsl::new(i.1 as f32, 0.7, (i.2 as f64 / 100.0) as f32).to_rgb();
+            paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (0.6 * 255.0) as u8);
+            pixmap.stroke_path(&i.0, &paint, &stroke, Transform::identity(), None);
+        }
+
+        let mut stroke = Stroke::default();
+        stroke.width = (0.002 * scale) as f32;
+        for i in &self.points_paths {
+            let rgba = Hsl::new(i.1 as f32, 1.0, (i.2 as f64 / 100.0) as f32).to_rgb();
+            paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (0.8 * 255.0) as u8);
+            pixmap.stroke_path(&i.0, &paint, &stroke, Transform::identity(), None);
+        }
+
+        pixmap
     }
 }
