@@ -1,3 +1,4 @@
+use coolor::*;
 use ptfl_reader::Config;
 use ptfl_reader::PtflParser;
 use std::env;
@@ -100,6 +101,10 @@ fn main() {
             }
         }
 
+        all_path_builder.close();
+        non_zero_path_builder.close();
+            
+
         let mut pixmap = Pixmap::new(
             (2.0 * clip_pos * scale) as u32,
             (2.0 * clip_pos * scale) as u32,
@@ -118,7 +123,8 @@ fn main() {
             )
             .unwrap();
 
-        paint.set_color_rgba8(179, 77, 77, 77);
+        let rgba = Hsl::new(0.0, 0.4, 0.5).to_rgb();
+        paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (1.0 * 255.0) as u8);
         let mut stroke = Stroke::default();
         stroke.width = 0.0005 as f32; // hairline
         pixmap.stroke_path(
@@ -129,7 +135,8 @@ fn main() {
             None,
         );
 
-        paint.set_color_rgba8(217, 38, 38, 154);
+        let rgba = Hsl::new(0.0, 0.7, 0.5).to_rgb();
+        paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (1.0 * 255.0) as u8);
         let mut stroke = Stroke::default();
         stroke.width = 0.003 as f32;
         if let Some(non_zero_path) = non_zero_path_builder.finish() {
@@ -142,7 +149,8 @@ fn main() {
             );
         }
 
-        paint.set_color_rgba8(255, 0, 0, 205);
+        let rgba = Hsl::new(0.0, 1.0, 0.5).to_rgb();
+        paint.set_color_rgba8(rgba.r, rgba.g, rgba.b, (1.0 * 255.0 as f64).ceil() as u8);
         let mut stroke = Stroke::default();
         stroke.width = 0.002 as f32;
         if let Some(points_path) = points_path_builder.finish() {

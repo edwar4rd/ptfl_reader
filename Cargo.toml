@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 tiny-skia = "0.7.0"
+coolor = "0.5.0"
