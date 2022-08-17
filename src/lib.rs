@@ -148,7 +148,106 @@ impl PtflParser {
     }
 }
 
-pub fn svg_empty_document(scale: f64, clip_pos: f64) -> SVGDocument {
+pub struct SVGOutput {
+    all_paths: Vec<SVGPath>,
+    non_zero_paths: Vec<SVGPath>,
+    points_paths: Vec<SVGPath>,
+}
+
+impl SVGOutput {
+    pub fn new() -> SVGOutput {
+        SVGOutput {
+            all_paths: Vec::new(),
+            non_zero_paths: Vec::new(),
+            points_paths: Vec::new(),
+        }
+    }
+
+    pub fn add_points(
+        &mut self,
+        points: &Vec<(f64, f64)>,
+        clip_pos: f64,
+        scale: f64,
+        hue: f64,
+        brightness: u32,
+    ) {
+        self.all_paths.push(
+            SVGPath::new()
+                .set("fill", "none")
+                .set("stroke", format!("hsla({hue},40%,{brightness}%, 0.3)"))
+                .set("stroke-width", scale * 0.0005)
+                .set("d", all_path_svgdata(&points, clip_pos, scale)),
+        );
+
+        self.non_zero_paths.push(
+            SVGPath::new()
+                .set("fill", "none")
+                .set("stroke", format!("hsla({hue},70%,{brightness}%, 0.6)"))
+                .set("stroke-width", scale * 0.003)
+                .set("d", non_zero_path_svgdata(&points, clip_pos, scale)),
+        );
+
+        self.points_paths.push(
+            SVGPath::new()
+                .set("fill", "none")
+                .set("stroke", format!("hsla({hue},100%,{brightness}%, 0.8)"))
+                .set("stroke-width", scale * 0.002)
+                .set(
+                    "d",
+                    non_zero_path_square_svgdata(&points, clip_pos, scale, 0.01),
+                ),
+        );
+    }
+
+    pub fn combine(mut a: SVGOutput, mut b: SVGOutput) -> SVGOutput {
+        a.all_paths.append(&mut b.all_paths);
+        a.non_zero_paths.append(&mut b.non_zero_paths);
+        a.points_paths.append(&mut b.points_paths);
+        SVGOutput {
+            all_paths: a.all_paths,
+            non_zero_paths: a.non_zero_paths,
+            points_paths: a.points_paths,
+        }
+    }
+
+    pub fn output_to_empty_document(&self, scale: f64, clip_pos: f64) -> SVGDocument {
+        let mut document = svg_empty_document(scale, clip_pos);
+        for path in &self.all_paths {
+            document = document.add(path.clone());
+        }
+
+        for path in &self.non_zero_paths {
+            document = document.add(path.clone());
+        }
+
+        for path in &self.points_paths {
+            document = document.add(path.clone());
+        }
+
+        document
+    }
+
+    pub fn output_to_document(
+        &self,
+        mut document: SVGDocument,
+    ) -> SVGDocument {
+        for path in &self.all_paths {
+            document = document.add(path.clone());
+        }
+
+        for path in &self.non_zero_paths {
+            document = document.add(path.clone());
+        }
+
+        for path in &self.points_paths {
+            document = document.add(path.clone());
+        }
+
+        document
+    }
+}
+
+fn svg_empty_document(scale: f64, clip_pos: f64) -> SVGDocument {
     svg::Document::new()
         .set("width", format!("{}px", (scale * clip_pos * 2.0) as u32))
         .set("height", format!("{}px", (scale * clip_pos * 2.0) as u32))
@@ -162,38 +261,6 @@ pub fn svg_empty_document(scale: f64, clip_pos: f64) -> SVGDocument {
                 .set("width", "100%")
                 .set("height", "100%"),
         )
-}
-
-pub fn svg_output_to_document(
-    document: SVGDocument,
-    points: &Vec<(f64, f64)>,
-    clip_pos: f64,
-    scale: f64,
-    hue: f64,
-    brightness: u32,
-) -> SVGDocument {
-    let all_path = SVGPath::new()
-        .set("fill", "none")
-        .set("stroke", format!("hsla({hue},40%,{brightness}%, 0.3)"))
-        .set("stroke-width", scale * 0.0005)
-        .set("d", all_path_svgdata(&points, clip_pos, scale));
-
-    let nz_path = SVGPath::new()
-        .set("fill", "none")
-        .set("stroke", format!("hsla({hue},70%,{brightness}%, 0.6)"))
-        .set("stroke-width", scale * 0.003)
-        .set("d", non_zero_path_svgdata(&points, clip_pos, scale));
-
-    let points_path = SVGPath::new()
-        .set("fill", "none")
-        .set("stroke", format!("hsla({hue},100%,{brightness}%, 0.8)"))
-        .set("stroke-width", scale * 0.002)
-        .set(
-            "d",
-            non_zero_path_square_svgdata(&points, clip_pos, scale, 0.01),
-        );
-
-    document.add(all_path).add(nz_path).add(points_path)
 }
 
 fn all_path_svgdata(points: &Vec<(f64, f64)>, clip_pos: f64, scale: f64) -> SVGData {

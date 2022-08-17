@@ -1,7 +1,6 @@
-use ptfl_reader::svg_empty_document;
-use ptfl_reader::svg_output_to_document;
 use ptfl_reader::Config;
 use ptfl_reader::PtflParser;
+use ptfl_reader::SVGOutput;
 use std::env;
 
 fn main() {
@@ -38,21 +37,28 @@ fn main() {
         }
     }
 
-    let mut all_document = svg_empty_document(scale, clip_pos);
+    let mut all_output = SVGOutput::new();
     let mut this_hue = 0.0;
     for i in &point_files {
-        let document = svg_empty_document(scale, clip_pos);
-        let document = svg_output_to_document(document, &i.1, clip_pos, scale, 0.0, 50);
-        all_document = svg_output_to_document(all_document, &i.1, clip_pos, scale, this_hue, 50);
+        let mut output = SVGOutput::new();
+        output.add_points(&i.1, clip_pos, scale, this_hue, 50);
+        svg::save(
+            format!("./tests/{}.svg", i.0),
+            &output.output_to_empty_document(scale, clip_pos),
+        )
+        .unwrap();
+        all_output = SVGOutput::combine(all_output, output);
         this_hue = if this_hue + 7.0 > 360.0 {
             this_hue - 353.0
         } else {
             this_hue + 7.0
         };
-        svg::save(format!("./tests/{}.svg", i.0), &document).unwrap();
     }
-    svg::save(format!("./tests/all.svg"), &all_document).unwrap();
-    
+    svg::save(
+        format!("./tests/all.svg"),
+        &all_output.output_to_empty_document(scale, clip_pos),
+    )
+    .unwrap();
 }
 
 fn print_help() {
