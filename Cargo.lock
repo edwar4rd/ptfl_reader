@@ -94,6 +94,7 @@ name = "ptfl_reader"
 version = "0.1.0"
 dependencies = [
  "coolor",
+ "svg",
  "tiny-skia",
 ]
 
@@ -105,6 +106,12 @@ checksum = "c1ff3d6d9696af502cc3110dacce942840fb06ff4514cad92236ecc455f2ce05"
 dependencies = [
  "bytemuck",
 ]
+
+[[package]]
+name = "svg"
+version = "0.10.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e72d8b19ab05827afefcca66bf47040c1e66a0901eb814784c77d4ec118bd309"
 
 [[package]]
 name = "tiny-skia"

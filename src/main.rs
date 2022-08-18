@@ -1,6 +1,7 @@
 use ptfl_reader::Config;
 use ptfl_reader::PNGOutput;
 use ptfl_reader::PtflParser;
+use ptfl_reader::SVGOutput;
 use std::env;
 
 fn main() {
@@ -37,24 +38,38 @@ fn main() {
         }
     }
 
-    // print lidar points onto the image
-    let mut all_output = PNGOutput::new();
+    let mut all_svg_output = SVGOutput::new();
+    let mut all_png_output = PNGOutput::new();
     let mut this_hue = 0.0;
-    for i in point_files {
-        let mut output = PNGOutput::new();
-        output.add_points(&i.1, clip_pos, scale, this_hue, 50);
-        output
+    for i in &point_files {
+        let mut svg_output = SVGOutput::new();
+        let mut png_output = PNGOutput::new();
+        svg_output.add_points(&i.1, clip_pos, scale, this_hue, 50);
+        png_output.add_points(&i.1, clip_pos, scale, this_hue, 50);
+        svg::save(
+            format!("./tests/{}.svg", i.0),
+            &svg_output.output_to_empty_document(scale, clip_pos),
+        )
+        .unwrap();
+        png_output
             .to_pixmap(clip_pos, scale)
             .save_png(format!("./tests/{}.png", i.0))
             .unwrap();
-        all_output = PNGOutput::combine(all_output, output);
+        all_svg_output = SVGOutput::combine(all_svg_output, svg_output);
+        all_png_output = PNGOutput::combine(all_png_output, png_output);
         this_hue = if this_hue + 7.0 > 360.0 {
             this_hue - 353.0
         } else {
             this_hue + 7.0
         };
     }
-    all_output
+
+    svg::save(
+        format!("./tests/all.svg"),
+        &all_svg_output.output_to_empty_document(scale, clip_pos),
+    )
+    .unwrap();
+    all_png_output
         .to_pixmap(clip_pos, scale)
         .save_png(format!("./tests/all.png"))
         .unwrap();
