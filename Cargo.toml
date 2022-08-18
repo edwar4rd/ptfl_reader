@@ -7,3 +7,5 @@ edition = "2021"
 
 [dependencies]
 svg = "0.10.0"
+tiny-skia = "0.7.0"
+coolor = "0.5.0"
