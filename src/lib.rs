@@ -1,4 +1,5 @@
 use coolor::*;
+use indexmap::IndexMap;
 use std::fs;
 use std::path::Path;
 use svg::node::element::path::Data as SVGData;
@@ -66,7 +67,7 @@ impl PtflParser {
     pub fn parse(
         &mut self,
         path: &str,
-        target: &mut Vec<(String, Vec<(f64, f64)>)>,
+        target: &mut IndexMap<(String, u32), Vec<(f64, f64)>>,
     ) -> Result<u32, String> {
         let file = match fs::read_to_string(&path) {
             Ok(file) => file,
@@ -140,18 +141,18 @@ impl PtflParser {
                     );
                     current_reg.push(reg);
                     if next == 0 {
-                        target.push((
-                            format!(
-                                "{}-{:04}",
+                        target.insert(
+                            (
                                 Path::new(&path)
                                     .file_name()
                                     .expect("Given path isn't a file")
                                     .to_str()
-                                    .expect("Invalid unicode in filename"),
-                                file_entry_num
+                                    .expect("Invalid unicode in filename")
+                                    .to_string(),
+                                file_entry_num,
                             ),
                             current_reg.clone(),
-                        ));
+                        );
                         file_entry_num += 1;
                         ParsingState::None
                     } else {
@@ -243,10 +244,7 @@ impl SVGOutput {
         document
     }
 
-    pub fn output_to_document(
-        &self,
-        mut document: SVGDocument,
-    ) -> SVGDocument {
+    pub fn output_to_document(&self, mut document: SVGDocument) -> SVGDocument {
         for path in &self.all_paths {
             document = document.add(path.clone());
         }

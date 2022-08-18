@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use ptfl_reader::Config;
 use ptfl_reader::PNGOutput;
 use ptfl_reader::PtflParser;
@@ -22,7 +23,7 @@ fn main() {
         return;
     }
 
-    let mut point_files: Vec<(String, Vec<(f64, f64)>)> = Vec::new();
+    let mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>> = IndexMap::new();
     let mut parser = PtflParser::new();
     for path in config.filenames {
         match parser.parse(path.as_str(), &mut point_files) {
@@ -47,13 +48,13 @@ fn main() {
         svg_output.add_points(&i.1, clip_pos, scale, this_hue, 50);
         png_output.add_points(&i.1, clip_pos, scale, this_hue, 50);
         svg::save(
-            format!("./tests/{}.svg", i.0),
+            format!("./tests/{}.svg", format!("{}-{:04}", i.0.0, i.0.1)),
             &svg_output.output_to_empty_document(scale, clip_pos),
         )
         .unwrap();
         png_output
             .to_pixmap(clip_pos, scale)
-            .save_png(format!("./tests/{}.png", i.0))
+            .save_png(format!("./tests/{}.png", format!("{}-{:04}", i.0.0, i.0.1)))
             .unwrap();
         all_svg_output = SVGOutput::combine(all_svg_output, svg_output);
         all_png_output = PNGOutput::combine(all_png_output, png_output);
