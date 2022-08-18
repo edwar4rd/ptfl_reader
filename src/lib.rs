@@ -85,10 +85,19 @@ impl PtflParser {
                         ParsingState::None
                     } else {
                         let reg_length: usize = match line.parse() {
-                            Ok(length) => length,
+                            Ok(length) => {
+                                if length > 0 {
+                                    length
+                                } else {
+                                    return Err(
+                                        "Expected non-zero u32 or empty when None, got Zero"
+                                            .to_string(),
+                                    );
+                                }
+                            }
                             Err(err) => {
                                 return Err(format!(
-                                    "Expected u32 or empty when None, {}",
+                                    "Expected non-zero u32 or empty when None, {}",
                                     err.to_string()
                                 ))
                             }
