@@ -1,6 +1,8 @@
 use indexmap::IndexMap;
 use ptfl_reader::Config;
+use ptfl_reader::PNGOutput;
 use ptfl_reader::PtflParser;
+use ptfl_reader::SVGOutput;
 use std::cmp::Ordering;
 use std::env;
 use std::io;
@@ -68,6 +70,7 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
         let input: Vec<&str> = input.trim().split(' ').collect();
         let command = input[0];
 
+        // match and execute the given command
         match command.len() {
             0 => continue,
             4 => {
@@ -133,6 +136,408 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                             }
                             None => println!("No, {}-{:04} not found", &key.0, &key.1),
                         }
+                    }
+                } else {
+                    print_tui_help();
+                }
+            }
+            6 => {
+                if command == "output" {
+                    fn prompt_multi_entry() {
+                        println!("output [options] file_name");
+                        println!("\tentry_name entry_num [hue]");
+                        println!("\tentry_name entry_num [hue]");
+                        println!("\t...");
+                    }
+
+                    fn prompt() {
+                        println!("output [options] entry_name entry_num [hue]");
+                        prompt_multi_entry();
+                        println!("");
+                    }
+
+                    fn prompt_options() {
+                        println!("options:");
+                        println!("\t--png:\t\t(DEFAULT)output in PNG format");
+                        println!("\t--svg:\t\toutput in SVG(Scalable Vector Graphics) format");
+                        println!("\t--scale SCALE:\t(DEFAULT=1000)how much pixel for a meter");
+                        println!("\t--clip POS:\t(DEFAULT=2)how far to include in the output");
+                        println!("\t--help:\t\tprint this message");
+                    }
+
+                    enum OutputType {
+                        SVG,
+                        PNG,
+                    }
+                    struct OutputOption {
+                        output_type: OutputType,
+                        scale: f64,
+                        clip_pos: f64,
+                        help: bool,
+                    }
+
+                    fn parse_options(input: &Vec<&str>) -> Result<(OutputOption, usize), String> {
+                        let mut option: OutputOption = OutputOption {
+                            output_type: OutputType::PNG,
+                            scale: 1000.0,
+                            clip_pos: 2.0,
+                            help: false,
+                        };
+
+                        let mut next: usize = 1;
+                        loop {
+                            // check if input have enough arguments to parse
+                            if input.len() <= next {
+                                return Ok((option, next));
+                            }
+                            if input[next] == "--" {
+                                return Ok((option, next + 1));
+                            } else if input[next] == "--png" {
+                                option.output_type = OutputType::PNG;
+                                next += 1;
+                            } else if input[next] == "--svg" {
+                                option.output_type = OutputType::SVG;
+                                next += 1;
+                            } else if input[next] == "--scale" {
+                                if input.len() <= next + 1 {
+                                    return Err(
+                                        "Expect f64 after --scale, getting None".to_string()
+                                    );
+                                } else {
+                                    option.scale = match input[next + 1].parse() {
+                                        Ok(scale) => scale,
+                                        Err(err) => {
+                                            return Err(format!(
+                                                "Expect f64 after --scale, {}",
+                                                err.to_string()
+                                            ))
+                                        }
+                                    };
+                                    next += 2;
+                                }
+                            } else if input[next] == "--clip" {
+                                if input.len() <= next + 1 {
+                                    return Err("Expect f64 after --clip, getting None".to_string());
+                                } else {
+                                    option.clip_pos = match input[next + 1].parse() {
+                                        Ok(clip_pos) => clip_pos,
+                                        Err(err) => {
+                                            return Err(format!(
+                                                "Expect f64 after --clip, {}",
+                                                err.to_string()
+                                            ))
+                                        }
+                                    };
+                                    next += 2;
+                                }
+                            } else if input[next] == "--help" {
+                                option.help = true;
+                                next += 1;
+                            } else {
+                                // left any unknown command as filename/entry name
+                                return Ok((option, next));
+                            }
+                        }
+                    }
+
+                    let (option, next) = match parse_options(&input) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            prompt();
+                            prompt_options();
+                            println!("Error happened parsing options:\t\n{}", err);
+                            continue;
+                        }
+                    };
+
+                    if option.help {
+                        prompt();
+                        prompt_options();
+                        continue;
+                    }
+
+                    if input.len() <= next {
+                        prompt();
+                        println!(
+                            "Expect filename or entry_name and entry_num after command and options"
+                        );
+                        continue;
+                    }
+
+                    if input.len() - 1 == next {
+                        fn tui_get_entry_keys_and_hue(
+                            point_files: &IndexMap<(String, u32), Vec<(f64, f64)>>,
+                            prompt: fn(),
+                        ) -> Vec<((String, u32), f64)> {
+                            let mut entry_keys: Vec<((String, u32), f64)> = Vec::new();
+                            let mut no_hue: u32 = 0;
+                            loop {
+                                // prompt the user they are entering entries for combination
+                                print!("\t");
+                                io::stdout().flush().unwrap();
+
+                                // read in the entry name
+                                let mut entry_input = String::new();
+                                io::stdin()
+                                    .read_line(&mut entry_input)
+                                    .expect("Reading line from terminal failed");
+
+                                // break down the input
+                                let entry_input: Vec<&str> =
+                                    entry_input.trim().split(' ').collect();
+                                if entry_input.len() == 1 && entry_input[0].len() == 0 {
+                                    break;
+                                }
+
+                                if entry_input.len() != 2 && entry_input.len() != 3 {
+                                    prompt();
+                                    continue;
+                                }
+
+                                // turn the input into a key
+                                let entry_key = (
+                                    entry_input[0].to_string(),
+                                    match entry_input[1].parse::<u32>() {
+                                        Ok(entry_num) => entry_num,
+                                        Err(err) => {
+                                            prompt();
+                                            println!(
+                                                "Error happened parsing entry_num: \n\t{}",
+                                                err.to_string()
+                                            );
+                                            continue;
+                                        }
+                                    },
+                                );
+
+                                // reading hue from input or uses the default
+                                let hue = if entry_input.len() == 3 {
+                                    match entry_input[2].parse::<f64>() {
+                                        Ok(hue) => {
+                                            if 0.0 <= hue && hue <= 360.0 {
+                                                hue
+                                            } else {
+                                                no_hue += 1;
+                                                -1.0
+                                            }
+                                        }
+                                        Err(err) => {
+                                            prompt();
+                                            println!("Expect f64 for hue, {}", err.to_string());
+                                            continue;
+                                        }
+                                    }
+                                } else {
+                                    no_hue += 1;
+                                    -1.0
+                                };
+
+                                // push if the entry exist in point_files
+                                if point_files.contains_key(&entry_key) {
+                                    entry_keys.push((entry_key, hue));
+                                } else {
+                                    prompt();
+                                    println!(
+                                        "Entry {}-{:04} didn't exist!",
+                                        entry_key.0, entry_key.1
+                                    );
+                                    continue;
+                                }
+                            }
+                            let mut current_hue = 0.0;
+                            if no_hue > 0 {
+                                let step_hue = 360.0 / no_hue as f64;
+                                for (_, hue) in &mut entry_keys {
+                                    if *hue < 0.0 {
+                                        *hue = current_hue;
+                                        current_hue += step_hue;
+                                    }
+                                }
+                                assert!(current_hue - 360.0 < 0.01);
+                            }
+                            entry_keys
+                        }
+                        // output [options] filename
+                        // let pngoutput = PNGOutput::new();
+                        // let svgoutput = SVGOutput::new();
+                        //
+                        // for key in tui_get_entry_keys(&point_files, prompt) {
+                        //     // get entry names ensure the keys are valid so we can safely unwrap
+                        //     combined_entry.append(&mut (point_files.get(&key).unwrap().clone()));
+                        // }
+
+                        let keys_and_hues =
+                            tui_get_entry_keys_and_hue(&point_files, prompt_multi_entry);
+                        match option.output_type {
+                            OutputType::PNG => {
+                                let mut png_output = PNGOutput::new();
+                                for (entry, hue) in keys_and_hues {
+                                    png_output.add_points(
+                                        &point_files.get(&entry).unwrap(),
+                                        option.clip_pos,
+                                        option.scale,
+                                        hue,
+                                        50,
+                                    );
+                                }
+
+                                match png_output
+                                    .to_pixmap(option.clip_pos, option.scale)
+                                    .save_png(input[next])
+                                {
+                                    Ok(_) => {
+                                        println!("Saved {}", input[next]);
+                                    }
+                                    Err(err) => {
+                                        println!(
+                                            "Failed saving to file {}:\t\n{}",
+                                            input[next],
+                                            err.to_string()
+                                        );
+                                    }
+                                }
+                            }
+                            OutputType::SVG => {
+                                let mut svg_output = SVGOutput::new();
+                                for (entry, hue) in keys_and_hues {
+                                    svg_output.add_points(
+                                        &point_files.get(&entry).unwrap(),
+                                        option.clip_pos,
+                                        option.scale,
+                                        hue,
+                                        50,
+                                    );
+                                }
+
+                                match svg::save(
+                                    input[next],
+                                    &svg_output
+                                        .output_to_empty_document(option.scale, option.clip_pos),
+                                ) {
+                                    Ok(_) => {
+                                        println!("Saved {}", input[next]);
+                                    }
+                                    Err(err) => {
+                                        println!(
+                                            "Failed saving to file {}:\t\n{}",
+                                            input[next],
+                                            err.to_string()
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    } else if input.len() - 2 == next || input.len() - 3 == next {
+                        // output [options] entry_name entry_num [hue]
+                        let hue = if input.len() - 3 == next {
+                            match input[next + 2].parse::<f64>() {
+                                Ok(hue) => hue,
+                                Err(err) => {
+                                    prompt();
+                                    println!("Expect f64 for hue, {}", err.to_string());
+                                    continue;
+                                }
+                            }
+                        } else {
+                            0.0
+                        };
+
+                        let key = (
+                            input[next].to_string(),
+                            match input[next + 1].parse::<u32>() {
+                                Ok(entry_num) => entry_num,
+                                Err(err) => {
+                                    prompt();
+                                    println!(
+                                        "Error happened parsing entry_num: \n\t{}",
+                                        err.to_string()
+                                    );
+                                    continue;
+                                }
+                            },
+                        );
+
+                        match point_files.get(&key) {
+                            Some(entry) => match option.output_type {
+                                OutputType::PNG => {
+                                    let mut png_output = PNGOutput::new();
+                                    png_output.add_points(
+                                        &entry,
+                                        option.clip_pos,
+                                        option.scale,
+                                        hue,
+                                        50,
+                                    );
+                                    match png_output
+                                        .to_pixmap(option.clip_pos, option.scale)
+                                        .save_png(format!("{}-{:04}.png", key.0, key.1))
+                                    {
+                                        Ok(_) => {
+                                            println!(
+                                                "Saved {}-{:04}.png with {} entries.",
+                                                key.0,
+                                                key.1,
+                                                entry.len()
+                                            );
+                                        }
+                                        Err(err) => {
+                                            println!(
+                                                "Failed saving to file {}-{:04}.png:\t\n{}",
+                                                key.0,
+                                                key.1,
+                                                err.to_string()
+                                            );
+                                        }
+                                    }
+                                }
+                                OutputType::SVG => {
+                                    let mut svg_output = SVGOutput::new();
+                                    svg_output.add_points(
+                                        &entry,
+                                        option.clip_pos,
+                                        option.scale,
+                                        hue,
+                                        50,
+                                    );
+                                    match svg::save(
+                                        format!(
+                                            "./tests/{}.svg",
+                                            format!("{}-{:04}", key.0, key.1)
+                                        ),
+                                        &svg_output.output_to_empty_document(
+                                            option.scale,
+                                            option.clip_pos,
+                                        ),
+                                    ) {
+                                        Ok(_) => {
+                                            println!(
+                                                "Saved {}-{:04}.svg with {} entries.",
+                                                key.0,
+                                                key.1,
+                                                entry.len()
+                                            );
+                                        }
+                                        Err(err) => {
+                                            println!(
+                                                "Failed saving to file {}-{:04}.png:\t\n{}",
+                                                key.0,
+                                                key.1,
+                                                err.to_string()
+                                            );
+                                        }
+                                    }
+                                }
+                            },
+                            None => {
+                                prompt();
+                                println!("Entry {}-{:04} didn't exist!", key.0, key.1);
+                                continue;
+                            }
+                        }
+                    } else {
+                        prompt();
+                        println!("Too many arguments!");
+                        continue;
                     }
                 } else {
                     print_tui_help();
@@ -212,6 +617,7 @@ fn print_tui_help() {
     println!("help:\t\tprint this message");
     println!("list:\t\tlist all entries with ammount of contained points");
     println!("load:\t\tread and parse a file to pointfiles");
+    println!("output:\t\toutput entry(es) into file");
     println!("show:\t\tcheck if a entry exists");
 }
 
