@@ -3,6 +3,7 @@ use ptfl_reader::Config;
 use ptfl_reader::PNGOutput;
 use ptfl_reader::PtflParser;
 use ptfl_reader::SVGOutput;
+use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::env;
 use std::io;
@@ -205,7 +206,15 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                                     );
                                 } else {
                                     option.scale = match input[next + 1].parse() {
-                                        Ok(scale) => scale,
+                                        Ok(scale) => {
+                                            if scale > 0.0 {
+                                                scale
+                                            } else {
+                                                return Err(
+                                                    "Expect positive f64 for SCALE".to_string()
+                                                );
+                                            }
+                                        }
                                         Err(err) => {
                                             return Err(format!(
                                                 "Expect f64 after --scale, {}",
@@ -220,7 +229,15 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                                     return Err("Expect f64 after --clip, getting None".to_string());
                                 } else {
                                     option.clip_pos = match input[next + 1].parse() {
-                                        Ok(clip_pos) => clip_pos,
+                                        Ok(clip_pos) => {
+                                            if clip_pos > 0.0 {
+                                                clip_pos
+                                            } else {
+                                                return Err(
+                                                    "Expect positive f64 for POS".to_string()
+                                                );
+                                            }
+                                        }
                                         Err(err) => {
                                             return Err(format!(
                                                 "Expect f64 after --clip, {}",
@@ -442,96 +459,211 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                             0.0
                         };
 
-                        let key = (
-                            input[next].to_string(),
-                            match input[next + 1].parse::<u32>() {
-                                Ok(entry_num) => entry_num,
-                                Err(err) => {
-                                    prompt();
-                                    println!(
-                                        "Error happened parsing entry_num: \n\t{}",
-                                        err.to_string()
-                                    );
-                                    continue;
-                                }
-                            },
-                        );
-
-                        match point_files.get(&key) {
-                            Some(entry) => match option.output_type {
-                                OutputType::PNG => {
-                                    let mut png_output = PNGOutput::new();
-                                    png_output.add_points(
-                                        &entry,
-                                        option.clip_pos,
-                                        option.scale,
-                                        hue,
-                                        50,
-                                    );
-                                    match png_output
-                                        .to_pixmap(option.clip_pos, option.scale)
-                                        .save_png(format!("{}-{:04}.png", key.0, key.1))
-                                    {
-                                        Ok(_) => {
-                                            println!(
-                                                "Saved {}-{:04}.png with {} entries.",
-                                                key.0,
-                                                key.1,
-                                                entry.len()
-                                            );
-                                        }
-                                        Err(err) => {
-                                            println!(
-                                                "Failed saving to file {}-{:04}.png:\t\n{}",
-                                                key.0,
-                                                key.1,
-                                                err.to_string()
-                                            );
+                        if input[next + 1] == "*" && {
+                            let mut iter = point_files.iter();
+                            loop {
+                                match iter.next() {
+                                    Some((key, _)) => {
+                                        if key.0 == input[next] {
+                                            break true;
                                         }
                                     }
+                                    None => {
+                                        break false;
+                                    }
+                                }
+                            }
+                        } {
+                            match option.output_type {
+                                OutputType::PNG => {
+                                    fn png_output_entry(
+                                        key: &(String, u32),
+                                        entry: &Vec<(f64, f64)>,
+                                        input: &Vec<&str>,
+                                        next: usize,
+                                        hue: f64,
+                                        option: &OutputOption,
+                                    ) {
+                                        let mut png_output = PNGOutput::new();
+                                        if key.0 == input[next] {
+                                            png_output.add_points(
+                                                &entry,
+                                                option.clip_pos,
+                                                option.scale,
+                                                hue,
+                                                50,
+                                            );
+                                            match png_output
+                                                .to_pixmap(option.clip_pos, option.scale)
+                                                .save_png(format!("{}-{:04}.png", key.0, key.1))
+                                            {
+                                                Ok(_) => {
+                                                    println!(
+                                                        "Saved {}-{:04}.png with {} entries.",
+                                                        key.0,
+                                                        key.1,
+                                                        entry.len()
+                                                    );
+                                                }
+                                                Err(err) => {
+                                                    println!(
+                                                        "Failed saving to file {}-{:04}.png:\t\n{}",
+                                                        key.0,
+                                                        key.1,
+                                                        err.to_string()
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                    point_files.par_iter().for_each(|x| {
+                                        png_output_entry(x.0, x.1, &input, next, hue, &option)
+                                    });
                                 }
                                 OutputType::SVG => {
-                                    let mut svg_output = SVGOutput::new();
-                                    svg_output.add_points(
-                                        &entry,
-                                        option.clip_pos,
-                                        option.scale,
-                                        hue,
-                                        50,
-                                    );
-                                    match svg::save(
-                                        format!(
-                                            "./tests/{}.svg",
-                                            format!("{}-{:04}", key.0, key.1)
-                                        ),
-                                        &svg_output.output_to_empty_document(
-                                            option.scale,
-                                            option.clip_pos,
-                                        ),
+                                    fn svg_output_entry(
+                                        key: &(String, u32),
+                                        entry: &Vec<(f64, f64)>,
+                                        input: &Vec<&str>,
+                                        next: usize,
+                                        hue: f64,
+                                        option: &OutputOption,
                                     ) {
-                                        Ok(_) => {
-                                            println!(
-                                                "Saved {}-{:04}.svg with {} entries.",
-                                                key.0,
-                                                key.1,
-                                                entry.len()
+                                        let mut svg_output = SVGOutput::new();
+                                        if key.0 == input[next] {
+                                            svg_output.add_points(
+                                                &entry,
+                                                option.clip_pos,
+                                                option.scale,
+                                                hue,
+                                                50,
                                             );
-                                        }
-                                        Err(err) => {
-                                            println!(
-                                                "Failed saving to file {}-{:04}.png:\t\n{}",
-                                                key.0,
-                                                key.1,
-                                                err.to_string()
-                                            );
+                                            match svg::save(
+                                                format!(
+                                                    "{}.svg",
+                                                    format!("{}-{:04}", key.0, key.1)
+                                                ),
+                                                &svg_output.output_to_empty_document(
+                                                    option.scale,
+                                                    option.clip_pos,
+                                                ),
+                                            ) {
+                                                Ok(_) => {
+                                                    println!(
+                                                        "Saved {}-{:04}.svg with {} entries.",
+                                                        key.0,
+                                                        key.1,
+                                                        entry.len()
+                                                    );
+                                                }
+                                                Err(err) => {
+                                                    println!(
+                                                        "Failed saving to file {}-{:04}.svg:\t\n{}",
+                                                        key.0,
+                                                        key.1,
+                                                        err.to_string()
+                                                    );
+                                                }
+                                            }
                                         }
                                     }
+                                    point_files.par_iter().for_each(|x| {
+                                        svg_output_entry(x.0, x.1, &input, next, hue, &option)
+                                    });
                                 }
-                            },
-                            None => {
-                                prompt();
-                                println!("Entry {}-{:04} didn't exist!", key.0, key.1);
-                                continue;
+                            }
+                        } else {
+                            let key = (
+                                input[next].to_string(),
+                                match input[next + 1].parse::<u32>() {
+                                    Ok(entry_num) => entry_num,
+                                    Err(err) => {
+                                        prompt();
+                                        println!(
+                                            "Error happened parsing entry_num: \n\t{}",
+                                            err.to_string()
+                                        );
+                                        continue;
+                                    }
+                                },
+                            );
+
+                            match point_files.get(&key) {
+                                Some(entry) => match option.output_type {
+                                    OutputType::PNG => {
+                                        let mut png_output = PNGOutput::new();
+                                        png_output.add_points(
+                                            &entry,
+                                            option.clip_pos,
+                                            option.scale,
+                                            hue,
+                                            50,
+                                        );
+                                        match png_output
+                                            .to_pixmap(option.clip_pos, option.scale)
+                                            .save_png(format!("{}-{:04}.png", key.0, key.1))
+                                        {
+                                            Ok(_) => {
+                                                println!(
+                                                    "Saved {}-{:04}.png with {} entries.",
+                                                    key.0,
+                                                    key.1,
+                                                    entry.len()
+                                                );
+                                            }
+                                            Err(err) => {
+                                                println!(
+                                                    "Failed saving to file {}-{:04}.png:\t\n{}",
+                                                    key.0,
+                                                    key.1,
+                                                    err.to_string()
+                                                );
+                                            }
+                                        }
+                                    }
+                                    OutputType::SVG => {
+                                        let mut svg_output = SVGOutput::new();
+                                        svg_output.add_points(
+                                            &entry,
+                                            option.clip_pos,
+                                            option.scale,
+                                            hue,
+                                            50,
+                                        );
+                                        match svg::save(
+                                            format!(
+                                                "{}.svg",
+                                                format!("{}-{:04}", key.0, key.1)
+                                            ),
+                                            &svg_output.output_to_empty_document(
+                                                option.scale,
+                                                option.clip_pos,
+                                            ),
+                                        ) {
+                                            Ok(_) => {
+                                                println!(
+                                                    "Saved {}-{:04}.svg with {} entries.",
+                                                    key.0,
+                                                    key.1,
+                                                    entry.len()
+                                                );
+                                            }
+                                            Err(err) => {
+                                                println!(
+                                                    "Failed saving to file {}-{:04}.png:\t\n{}",
+                                                    key.0,
+                                                    key.1,
+                                                    err.to_string()
+                                                );
+                                            }
+                                        }
+                                    }
+                                },
+                                None => {
+                                    prompt();
+                                    println!("Entry {}-{:04} didn't exist!", key.0, key.1);
+                                    continue;
+                                }
                             }
                         }
                     } else {

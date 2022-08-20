@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 coolor = "0.5.0"
-indexmap = "1.9.1"
+indexmap = { version = "1.9.1", features = ["rayon"] }
 svg = "0.10.0"
 tiny-skia = "0.7.0"
+rayon = "1.5.3"
