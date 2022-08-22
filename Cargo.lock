@@ -211,6 +211,7 @@ dependencies = [
  "indexmap",
  "rayon",
  "svg",
+ "tev_client",
  "tiny-skia",
 ]
 
@@ -258,6 +259,12 @@ name = "svg"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e72d8b19ab05827afefcca66bf47040c1e66a0901eb814784c77d4ec118bd309"
+
+[[package]]
+name = "tev_client"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c845c2d56d4f732d09a32c9ea2cd3f01923be7a5f98d9f7f0a347205c3141036"
 
 [[package]]
 name = "tiny-skia"

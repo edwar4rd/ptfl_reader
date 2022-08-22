@@ -3,6 +3,7 @@ use ptfl_reader::Config;
 use ptfl_reader::PNGOutput;
 use ptfl_reader::PtflParser;
 use ptfl_reader::SVGOutput;
+use ptfl_reader::TevWrappedClient;
 use rayon::prelude::*;
 use std::cmp::Ordering;
 use std::env;
@@ -56,6 +57,7 @@ fn print_args_help() {
 
 // the main loop of tui interface
 fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
+    let mut tev: TevWrappedClient = TevWrappedClient::new();
     loop {
         // prompt the user to input something
         print!("> ");
@@ -74,6 +76,95 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
         // match and execute the given command
         match command.len() {
             0 => continue,
+            1 => {
+                if command == "#" {
+                    continue;
+                } else {
+                    print_tui_help();
+                }
+            }
+            2 => {
+                if command == "//" {
+                    continue;
+                } else {
+                    print_tui_help();
+                }
+            }
+            3 => {
+                if command == "tev" {
+                    fn prompt() {
+                        println!("tev entry_name entry_num");
+                        println!("");
+                    }
+
+                    match tev.start_client() {
+                        Ok(_) => {}
+                        Err(err) => {
+                            println!("Failed starting tev:\n\t{}", err);
+                        }
+                    }
+
+                    if input.len() == 3 {
+                        let key = (
+                            input[1].to_string(),
+                            match input[2].parse::<u32>() {
+                                Ok(entry_num) => entry_num,
+                                Err(err) => {
+                                    prompt();
+                                    println!(
+                                        "Error happened parsing entry_num: \n\t{}",
+                                        err.to_string()
+                                    );
+                                    continue;
+                                }
+                            },
+                        );
+
+                        match point_files.get(&key) {
+                            Some(entry) => {
+                                let mut png_output = PNGOutput::new();
+                                png_output.add_points(&entry, 2.0, 500.0, 222.0, 50);
+                                match png_output
+                                    .to_pixmap(2.0, 500.0)
+                                    .save_png(format!("/tmp/{}-{:04}.png", key.0, key.1))
+                                {
+                                    Ok(_) => {
+                                        println!(
+                                            "Saved {}-{:04}.png with {} entries.",
+                                            key.0,
+                                            key.1,
+                                            entry.len()
+                                        );
+                                    }
+                                    Err(err) => {
+                                        println!(
+                                            "Failed saving to file {}-{:04}.png:\n\t{}",
+                                            key.0,
+                                            key.1,
+                                            err.to_string()
+                                        );
+                                    }
+                                }
+
+                                match tev.open_image(format!("/tmp/{}-{:04}.png", key.0, key.1)) {
+                                    Ok(_) => {
+                                        println!("Opened image: /tmp/{}-{:04}.png", key.0, key.1);
+                                    }
+                                    Err(err) => {
+                                        println!("Failed opening image:\n\t{}", err);
+                                    }
+                                }
+                            }
+                            None => {
+                                prompt();
+                                println!("Entry {}-{:04} didn't exist!", key.0, key.1);
+                            }
+                        }
+                    } else {
+                        prompt();
+                    }
+                }
+            }
             4 => {
                 if command == "exit" {
                     break;
@@ -631,10 +722,7 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                                             50,
                                         );
                                         match svg::save(
-                                            format!(
-                                                "{}.svg",
-                                                format!("{}-{:04}", key.0, key.1)
-                                            ),
+                                            format!("{}.svg", format!("{}-{:04}", key.0, key.1)),
                                             &svg_output.output_to_empty_document(
                                                 option.scale,
                                                 option.clip_pos,
@@ -751,6 +839,7 @@ fn print_tui_help() {
     println!("load:\t\tread and parse a file to pointfiles");
     println!("output:\t\toutput entry(es) into file");
     println!("show:\t\tcheck if a entry exists");
+    println!("tev:\t\tpreview a entry on tev");
 }
 
 fn tui_get_entry_keys(
