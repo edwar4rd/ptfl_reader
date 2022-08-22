@@ -30,7 +30,7 @@ fn main() {
     // parse and load files specified in command line
     let mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>> = IndexMap::new();
     let mut parser = PtflParser::new();
-    for path in config.filenames {
+    for path in &config.filenames {
         match parser.parse(path.as_str(), &mut point_files) {
             Ok(count) => {
                 println!("Read {count} from {}.", path.as_str());
@@ -46,21 +46,25 @@ fn main() {
         }
     }
 
-    tui_loop(point_files);
+    tui_loop(point_files, config);
 }
 
 fn print_args_help() {
     println!("ptfl_reader [files] [--help]");
     println!("    files: one or multiple file path as input");
-    println!("    help: print this message");
+    println!("    --help: print this message");
+    println!("    --no-prompt: prevent gui loop outputing \t and \"> \" ");
+    
 }
 
 // the main loop of tui interface
-fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
+fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>, config: Config) {
     let mut tev: TevWrappedClient = TevWrappedClient::new();
     loop {
         // prompt the user to input something
-        print!("> ");
+        if !config.no_prompt {
+            print!("> ");
+        }
         io::stdout().flush().unwrap();
 
         // read in the command
@@ -376,12 +380,15 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                         fn tui_get_entry_keys_and_hue(
                             point_files: &IndexMap<(String, u32), Vec<(f64, f64)>>,
                             prompt: fn(),
+                            no_prompt: bool,
                         ) -> Vec<((String, u32), f64)> {
                             let mut entry_keys: Vec<((String, u32), f64)> = Vec::new();
                             let mut no_hue: u32 = 0;
                             loop {
                                 // prompt the user they are entering entries for combination
-                                print!("\t");
+                                if !no_prompt {
+                                    print!("\t");
+                                }
                                 io::stdout().flush().unwrap();
 
                                 // read in the entry name
@@ -475,7 +482,7 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                         // }
 
                         let keys_and_hues =
-                            tui_get_entry_keys_and_hue(&point_files, prompt_multi_entry);
+                            tui_get_entry_keys_and_hue(&point_files, prompt_multi_entry, config.no_prompt);
                         match option.output_type {
                             OutputType::PNG => {
                                 let mut png_output = PNGOutput::new();
@@ -797,7 +804,7 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>) {
                         }
 
                         let mut combined_entry: Vec<(f64, f64)> = Vec::new();
-                        for key in tui_get_entry_keys(&point_files, prompt) {
+                        for key in tui_get_entry_keys(&point_files, prompt, config.no_prompt) {
                             // get entry names ensure the keys are valid so we can safely unwrap
                             combined_entry.append(&mut (point_files.get(&key).unwrap().clone()));
                         }
@@ -845,11 +852,14 @@ fn print_tui_help() {
 fn tui_get_entry_keys(
     point_files: &IndexMap<(String, u32), Vec<(f64, f64)>>,
     prompt: fn(),
+    no_prompt: bool,
 ) -> Vec<(String, u32)> {
     let mut entry_keys: Vec<(String, u32)> = Vec::new();
     loop {
         // prompt the user they are entering entries for combination
-        print!("\t");
+        if !no_prompt {
+            print!("\t");
+        }
         io::stdout().flush().unwrap();
 
         // read in the entry name
