@@ -208,6 +208,9 @@ impl PNGOutput {
         hue: f64,
         brightness: u32,
     ) {
+        if points.len() == 0 {
+            return;
+        }
         let mut all_path_builder = PathBuilder::new();
         let mut non_zero_path_builder = PathBuilder::new();
         let mut points_path_builder = PathBuilder::new();

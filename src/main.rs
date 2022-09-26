@@ -238,7 +238,97 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>, config: C
                 }
             }
             6 => {
-                if command == "output" {
+                if command == "rotate" {
+                    fn prompt() {
+                        println!("rotate entry_name entry_num degree");
+                        println!("");
+                    }
+
+                    if input.len() != 4 {
+                        prompt();
+                    } else {
+                        let angle = match input[3].parse::<f64>() {
+                            Ok(angle) => angle / 180.0 * 3.1415926535,
+                            Err(err) => {
+                                prompt();
+                                println!(
+                                    "Error happened parsing entry_num: \n\t{}",
+                                    err.to_string()
+                                );
+                                continue;
+                            }
+                        };
+
+                        if input[2] == "*" && {
+                            let mut iter = point_files.iter();
+                            loop {
+                                match iter.next() {
+                                    Some((key, _)) => {
+                                        if key.0 == input[1] {
+                                            break true;
+                                        }
+                                    }
+                                    None => {
+                                        break false;
+                                    }
+                                }
+                            }
+                        } {
+                            fn rotate_entry(
+                                key: &(String, u32),
+                                entry: &mut Vec<(f64, f64)>,
+                                input: &Vec<&str>,
+                                angle: f64,
+                            ) {
+                                if key.0 == input[1] {
+                                    entry.par_iter_mut().for_each(|mut point| {
+                                        point.0 += angle;
+                                        if point.0 > 3.1415926535 {
+                                            point.0 -= 2.0 * 3.1415926535;
+                                        }
+                                    });
+                                }
+                            }
+                            point_files.par_iter_mut().for_each(|x| {
+                                rotate_entry(x.0, x.1, &input, angle);
+                            });
+                        } else {
+                            let key = (
+                                input[1].to_string(),
+                                match input[2].parse::<u32>() {
+                                    Ok(entry_num) => entry_num,
+                                    Err(err) => {
+                                        prompt();
+                                        println!(
+                                            "Error happened parsing entry_num: \n\t{}",
+                                            err.to_string()
+                                        );
+                                        continue;
+                                    }
+                                },
+                            );
+
+                            match point_files.get_mut(&key) {
+                                Some(entry) => {
+                                    entry.par_iter_mut().for_each(|mut point| {
+                                        point.0 += angle;
+                                        if point.0 > 3.1415926535 {
+                                            point.0 -= 2.0 * 3.1415926535;
+                                        }
+                                    });
+                                    println!(
+                                        "{}-{:04} has {} points rotated by {} radians",
+                                        &key.0,
+                                        &key.1,
+                                        entry.len(),
+                                        angle
+                                    );
+                                }
+                                None => println!("No, {}-{:04} not found", &key.0, &key.1),
+                            }
+                        }
+                    }
+                } else if command == "output" {
                     fn prompt_multi_entry() {
                         println!("output [options] file_name");
                         println!("\tentry_name entry_num [hue]");
@@ -582,7 +672,7 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>, config: C
                                         hue: f64,
                                         option: &OutputOption,
                                     ) {
-                                        let mut png_output = PNGOutput::new();
+                                            let mut png_output = PNGOutput::new();
                                         if key.0 == input[next] {
                                             png_output.add_points(
                                                 &entry,
@@ -627,7 +717,7 @@ fn tui_loop(mut point_files: IndexMap<(String, u32), Vec<(f64, f64)>>, config: C
                                         hue: f64,
                                         option: &OutputOption,
                                     ) {
-                                        let mut svg_output = SVGOutput::new();
+                                            let mut svg_output = SVGOutput::new();
                                         if key.0 == input[next] {
                                             svg_output.add_points(
                                                 &entry,
@@ -844,6 +934,7 @@ fn print_tui_help() {
     println!("help:\t\tprint this message");
     println!("list:\t\tlist all entries with ammount of contained points");
     println!("load:\t\tread and parse a file to pointfiles");
+    println!("rotate:\t\trotate points in entry(es)");
     println!("output:\t\toutput entry(es) into file");
     println!("show:\t\tcheck if a entry exists");
     println!("tev:\t\tpreview a entry on tev");
